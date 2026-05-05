@@ -1,0 +1,245 @@
+================================================================================
+  ROOMIFY — DATABASE SCHEMA
+  Database: MongoDB   ODM: Mongoose
+  Last updated: 2026-04-27
+================================================================================
+
+All collections include Mongoose's automatic fields:
+  _id        ObjectId   (primary key, auto-generated)
+  createdAt  Date       (auto-managed by timestamps: true)
+  updatedAt  Date       (auto-managed by timestamps: true)
+
+--------------------------------------------------------------------------------
+1. User
+   Collection: users
+--------------------------------------------------------------------------------
+
+Field                Type       Constraints / Notes
+-------------------  ---------  ------------------------------------------------
+firstName            String     required, trim, minlength: 2, maxlength: 30
+lastName             String     required, trim, minlength: 2, maxlength: 30
+email                String     required, unique, lowercase, trim
+password             String     required (stored as bcrypt hash)
+phone                String     unique (sparse), required if role = customer
+age                  Number     required if role = customer
+nationality          String     required if role = customer
+credentialChangedAt  Date       set on password / email change
+role                 String     required, enum, default: "customer"
+                                  values: customer | hotel_manager | admin
+status               String     enum, default: "active"
+                                  values: active | suspended | deleted
+
+--------------------------------------------------------------------------------
+2. HotelApplication
+   Collection: hotelapplications
+--------------------------------------------------------------------------------
+
+Field            Type       Constraints / Notes
+---------------  ---------  ----------------------------------------------------
+firstName        String     required, trim, minlength: 2, maxlength: 30
+lastName         String     required, trim, minlength: 2, maxlength: 30
+email            String     required, unique, lowercase, trim
+phone            String     required, trim
+hotelName        String     required, trim
+description      String     required, trim
+stars            Number     required, min: 1, max: 5
+address          Object
+  .street        String     required, trim
+  .city          String     required, trim
+  .country       String     required, trim
+numberOfRooms    Number     required
+documents        [String]   array of file-path / URL strings
+status           String     enum, default: "under_review"
+                               values: under_review | approved | rejected
+rejectionReason  String     optional; set when status = rejected
+reviewedBy       ObjectId   ref: User; set when an admin reviews
+reviewedAt       Date       set when an admin reviews
+
+Virtual:
+  submittedBy    String     computed as `${firstName} ${lastName}`
+
+--------------------------------------------------------------------------------
+3. Hotel
+   Collection: hotels
+--------------------------------------------------------------------------------
+
+Field          Type       Constraints / Notes
+-------------  ---------  ------------------------------------------------------
+owner          ObjectId   required, ref: User
+status         String     enum, default: "active"
+                            values: active | suspended
+name           String     required, trim
+description    String     required
+stars          Number     required, min: 1, max: 5
+phone          String     required when status = active
+email          String     required when status = active, lowercase, trim
+address        Object
+  .street      String     required, trim
+  .city        String     required, trim
+  .country     String     required, trim, default: "Egypt"
+photos         [String]   array of file-path / URL strings
+amenities      [String]   array of amenity label strings
+numberOfRooms  Number     required
+
+--------------------------------------------------------------------------------
+4. RoomType
+   Collection: roomtypes
+--------------------------------------------------------------------------------
+
+Field           Type       Constraints / Notes
+--------------  ---------  -----------------------------------------------------
+hotel           ObjectId   required, ref: Hotel
+type            String     required (e.g. "Single", "Deluxe Suite")
+description     String     required
+mainPhoto       String     required (file-path or URL)
+photos          [String]   array of additional photo strings
+view            String     optional (e.g. "Sea view", "Garden view")
+bedroomCount    Number     required, min: 1
+pricePerNight   Number     required
+maxGuests       Number     required
+smokingAllowed  Boolean    default: false
+status          String     enum, default: "active"
+                             values: active | inactive
+amenities       [String]   array of amenity label strings
+
+--------------------------------------------------------------------------------
+5. RoomAvailability
+   Collection: roomavailabilities
+--------------------------------------------------------------------------------
+
+Field           Type       Constraints / Notes
+--------------  ---------  -----------------------------------------------------
+roomType        ObjectId   required, ref: RoomType
+date            Date       required
+availableCount  Number     required
+
+Index: { roomType: 1, date: 1 }  unique: true
+
+--------------------------------------------------------------------------------
+6. Booking
+   Collection: bookings
+--------------------------------------------------------------------------------
+
+Field                   Type       Constraints / Notes
+----------------------  ---------  ---------------------------------------------
+customer                ObjectId   required, ref: User
+hotel                   ObjectId   required, ref: Hotel
+roomType                ObjectId   required, ref: RoomType
+checkIn                 Date       required
+checkOut                Date       required
+status                  String     enum, default: "pending_payment"
+                                     values: pending_payment | confirmed |
+                                             checked_in | completed |
+                                             cancelled_by_user |
+                                             cancelled_by_hotel |
+                                             cancelled_by_admin
+subtotal                Number     required (total cost)
+finalNightPrice         Number     required (price per night at time of booking)
+numGuests               Number     required
+paymentMethod           String     enum, default: "cash"
+                                     values: credit_card | cash
+paymentStatus           String     enum, default: "pending"
+                                     values: pending | paid | failed | refunded
+cancelledAt             Date       optional; set on cancellation
+updatedInformation      Object     contact overrides for this booking
+  .email                String     optional
+  .phone                String     optional
+
+--------------------------------------------------------------------------------
+7. Payment
+   Collection: payments
+--------------------------------------------------------------------------------
+
+Field          Type       Constraints / Notes
+-------------  ---------  ------------------------------------------------------
+booking        ObjectId   required, ref: Booking
+paidBy         ObjectId   required, ref: User
+amount         Number     required
+currency       String     required (e.g. "USD", "EGP")
+transactionId  String     optional; gateway transaction ID
+provider       String     required, enum
+                            values: stripe | paypal | paymob
+method         String     required, enum
+                            values: card | paypal
+status         String     enum, default: "pending"
+                            values: pending | completed | refunded |
+                                    partially_refunded
+refundAmount   Number     optional
+refundStatus   String     enum, default: "none"
+                            values: none | pending | processed
+
+--------------------------------------------------------------------------------
+8. Payout
+   Collection: payouts
+--------------------------------------------------------------------------------
+
+Field               Type       Constraints / Notes
+------------------  ---------  -------------------------------------------------
+hotel               ObjectId   required, ref: Hotel
+booking             ObjectId   required, ref: Booking
+amount              Number     required (amount sent to hotel)
+commissionDeducted  Number     required (platform commission amount)
+status              String     enum, default: "pending"
+                                 values: pending | paid
+paidAt              Date       optional; set when status = paid
+
+--------------------------------------------------------------------------------
+9. Review
+   Collection: reviews
+--------------------------------------------------------------------------------
+
+Field     Type       Constraints / Notes
+--------  ---------  ------------------------------------------------------------
+booking   ObjectId   required, ref: Booking
+hotel     ObjectId   required, ref: Hotel
+customer  ObjectId   required, ref: User
+rating    Number     required, min: 1, max: 5
+comment   String     optional
+status    String     enum, default: "published"
+                       values: published | flagged | removed
+
+--------------------------------------------------------------------------------
+10. Log
+    Collection: logs
+--------------------------------------------------------------------------------
+
+Field     Type       Constraints / Notes
+--------  ---------  ------------------------------------------------------------
+level     String     required, enum
+                       values: info | warn | error
+action    String     required (e.g. "USER_LOGIN", "BOOKING_CANCELLED")
+targetId  String     nullable; ID of the affected resource
+actor     Object
+  .type   String     required, enum: user | admin | system
+  .id     ObjectId   ref: User, nullable
+message   String     required
+
+--------------------------------------------------------------------------------
+11. RevokedToken
+    Collection: revokedtokens
+--------------------------------------------------------------------------------
+
+Field      Type       Constraints / Notes
+---------  ---------  ----------------------------------------------------------
+jti        String     required, unique (JWT ID claim)
+userId     ObjectId   required, ref: User
+expiresAt  Date       required
+
+Index: { expiresAt: 1 }  expireAfterSeconds: 0  (TTL — auto-deleted on expiry)
+
+================================================================================
+  RELATIONSHIPS SUMMARY
+================================================================================
+
+User            <-- owns --           Hotel              (Hotel.owner)
+User            <-- submits --        HotelApplication   (HotelApplication.email / reviewedBy)
+Hotel           <-- has many --       RoomType           (RoomType.hotel)
+RoomType        <-- has many --       RoomAvailability   (RoomAvailability.roomType)
+User + Hotel
+  + RoomType    <-- creates --        Booking            (Booking.customer / hotel / roomType)
+Booking         <-- has one --        Payment            (Payment.booking)
+Booking         <-- has one --        Payout             (Payout.booking)
+Booking         <-- has one --        Review             (Review.booking)
+User            <-- revokes tokens -- RevokedToken       (RevokedToken.userId)
+
+================================================================================
