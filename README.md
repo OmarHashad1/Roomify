@@ -322,8 +322,3 @@ pending_payment → confirmed → checked_in → completed
                                          ↘ cancelled
 ```
 
----
-
-## License
-
-This project was built as a university project at the British University in Egypt (BUE).
